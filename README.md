@@ -35,6 +35,98 @@ docker compose down           # tout arrêter
 docker compose down -v        # tout arrêter et effacer les messages 
 ```
 
+## Lancer sur AWS (Learner Lab)
+
+### 1. Créer l'instance EC2
+
+Dans le Learner Lab : **Start Lab**, puis la console AWS → EC2 → Lancer une instance :
+
+Exemple de réglages (vous pouvez les adapter) :
+
+| Réglage | Valeur |
+|---|---|
+| AMI | Ubuntu Server 24.04 LTS |
+| Type | `t3.medium`|
+| Paire de clés | `vockey` |
+| Groupe de sécurité | SSH |
+| Stockage | 20 Go gp3 |
+
+Récupérer la clé : page du Learner Lab → AWS Details → Download PEM, puis sur sa machine :
+
+```bash
+mkdir -p ~/.ssh 
+mv ~/Downloads/labsuser.pem ~/.ssh/ 
+chmod 400 ~/.ssh/labsuser.pem
+```
+
+### 2. Se connecter et installer Docker
+
+```bash
+ssh -i ~/.ssh/labsuser.pem ubuntu@<IP-publique>
+```
+
+Sur l'instance :
+
+```bash
+sudo apt update && sudo apt install -y docker.io docker-compose-v2 git
+sudo usermod -aG docker ubuntu
+exit                                    # se reconnecter pour pouvoir utiliser docker sans sudo
+```
+
+### 3. Récupérer le code
+
+```bash
+ssh -i ~/.ssh/labsuser.pem ubuntu@<IP-publique> # se reconnecter pour pouvoir utiliser docker sans sudo
+git clone https://github.com/elaoulamouhsine/binance-kafka-ingestion.git
+cd binance-kafka-ingestion
+```
+
+### 4. Configurer l'accès à Binance
+
+Les régions du Learner Lab sont aux États-Unis, d'où Binance refuse `api.binance.com` (erreur 451).
+On utilise les adresses réservées aux données de marché, dans un fichier `.env` lu automatiquement
+par Docker Compose :
+
+```bash
+cat > .env <<'EOF'
+BINANCE_REST=https://data-api.binance.vision
+BINANCE_WS=wss://data-stream.binance.vision
+EOF
+```
+
+Vérifier l'accès (doit afficher `200`) :
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://data-api.binance.vision/api/v3/ping
+```
+
+### 5. Lancer
+
+```bash
+docker compose up -d --build
+docker compose ps                       # kafka "healthy", producteur et kafka-ui "Up"
+docker compose logs -f producteur       # les lignes [stats] doivent afficher des msg/s
+```
+
+### 6. Ouvrir l'interface web de Kafka
+
+L'interface tourne sur l'instance : on y accède par un tunnel SSH, sans ouvrir de port.
+Dans un nouveau terminal de sa machine (la commande reste ouverte, c'est normal) :
+
+```bash
+ssh -i ~/.ssh/labsuser.pem -N -L 8080:localhost:8080 ubuntu@<IP-publique>
+```
+
+Puis ouvrir **http://localhost:8080** → Topics → `binance.trades` → Messages.
+
+### 7. Arrêter
+
+```bash
+docker compose down -v                  
+```
+
+Puis, dans la console EC2 : Arrêter l'instance
+ou la Résilier (plus rien n'est facturé).
 
 ## Le format des messages
 
